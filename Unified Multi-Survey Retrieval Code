@@ -48,3 +48,7 @@ def retrieve_void_population(config):
 
 # Execute Retrieval
 sculptor_data = retrieve_void_population(void_config)
+
+# Exporting the raw line-of-sight population for the Forensic Audit
+df.to_csv('bootes_void_audit_raw.csv', index=False)
+print("Success: 'bootes_void_audit_raw.csv' created and ready for download.")
