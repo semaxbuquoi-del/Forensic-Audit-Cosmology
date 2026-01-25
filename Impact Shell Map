@@ -1,0 +1,53 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+# 1. Load the processed forensic files
+# Make sure these files are in your current directory
+jitter_df = pd.read_csv('Bootes_Void_jitter_analysis.csv')
+bright_nulls_df = pd.read_csv('Bootes_Void_bright_nulls.csv')
+
+# 2. Identify Nozzle location (Peak Jitter Coordinate)
+nozzle_row = jitter_df.loc[jitter_df['jitter_kms'].idxmax()]
+peak_jitter = nozzle_row['jitter_kms']
+nozzle_ra = nozzle_row['ra']
+nozzle_dec = nozzle_row['dec']
+
+# 3. Generate the Impact Shell Map
+plt.figure(figsize=(12, 9))
+
+# Plot Metric Jitter as a grid of "Shells"
+# marker='s' (square) creates the blocky grid appearance used in forensic audits
+sc = plt.scatter(jitter_df['ra'], jitter_df['dec'], 
+                c=jitter_df['jitter_kms'], cmap='hot', 
+                marker='s', s=350, edgecolors='white', linewidths=0.3)
+
+# Overlay Bright Nulls (Failure Cells) 
+# These represent the 'Metric Snaps' identified in the audit
+plt.scatter(bright_nulls_df['ra'], bright_nulls_df['dec'], 
+            color='cyan', marker='x', s=120, 
+            label=f'{len(bright_nulls_df)} Bright Nulls (Failure Cells)', alpha=0.9)
+
+# Highlight the Nozzle Point (The Siphonic Breach)
+plt.scatter([nozzle_ra], [nozzle_dec], 
+            facecolors='none', edgecolors='lime', 
+            s=700, label=f'Nozzle Breach (Peak: {peak_jitter:.0f} km/s)', 
+            linewidths=2.5)
+
+# Add visual identifiers and labels
+plt.colorbar(sc, label='Metric Jitter (km/s)')
+plt.xlabel('Right Ascension (RA)')
+plt.ylabel('Declination (Dec)')
+plt.title(f'Boötes Void: Impact Shell Map\nPeak Jitter: {peak_jitter:,.2f} km/s at ({nozzle_ra}, {nozzle_dec})')
+plt.legend(loc='upper right', frameon=True, facecolor='white', framealpha=0.9)
+plt.grid(True, linestyle='--', alpha=0.4)
+
+# Set window limits to focus on the void core and its barriers
+plt.xlim(jitter_df['ra'].min() - 0.5, jitter_df['ra'].max() + 0.5)
+plt.ylim(jitter_df['dec'].min() - 0.5, jitter_df['dec'].max() + 0.5)
+
+plt.tight_layout()
+plt.savefig('bootes_impact_shell_map.png')
+plt.show()
+
+print(f"Forensic Audit Visualized: Peak Jitter of {peak_jitter:,.2f} km/s found at RA {nozzle_ra}, Dec {nozzle_dec}.")
