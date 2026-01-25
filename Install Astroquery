@@ -1,0 +1,11 @@
+# Install the library
+!pip install -q astroquery
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from astroquery.sdss import SDSS
+from astropy import coordinates as coords
+import astropy.units as u
+
+print("Environment Ready for Void Audit.")
