@@ -1,54 +1,55 @@
+# 1. Setup Environment
+!pip install -q astroquery
 import pandas as pd
-from astroquery.vizier import Vizier
-from astropy.coordinates import SkyCoord
-import astropy.units as u
+import numpy as np
+from astroquery.sdss import SDSS
 
-# --- AUDIT CONFIGURATION ---
-# Define the Sculptor Void (Southern Hemisphere)
-# Centered to capture the Sculptor Wall and Southern Wall barriers
-void_config = {
-    "name": "Sculptor_Void",
-    "ra_range": [350.0, 15.0],  # Crosses 0h; logic handles wrap-around
-    "dec_range": [-40.0, -20.0],
-    "sink_anchor": "Abell 4038"
-}
+# --- CONFIGURATION ---
+void_name = "Bootes_Void"
+ra_min, ra_max = 211.0, 226.0
+dec_min, dec_max = 38.0, 50.0
+c = 299792.458 # Speed of light in km/s
+m_p = 938.272e6 # Proton mass in eV/c^2 (for Ek calculation)
 
-def retrieve_void_population(config):
-    print(f"Starting Complete Audit: {config['name']}")
-    
-    # Configure Vizier for 6dFGS (Best for Sculptor/Southern Hemisphere)
-    # Using VII/249/6dfgs for spectroscopic redshifts
-    v = Vizier(columns=['*', 'z', 'r_mag', 'quality'])
-    v.ROW_LIMIT = -1 
+# 2. Forensic Retrieval Query
+print(f"Retrieving data for {void_name} barriers...")
+query = f"""
+SELECT s.ra, s.dec, s.z, s.zwarning, s.plate, s.mjd, s.fiberid, p.r
+FROM PhotoObj AS p JOIN SpecObj AS s ON s.bestobjid = p.objid
+WHERE s.ra BETWEEN {ra_min} AND {ra_max} AND s.dec BETWEEN {dec_min} AND {dec_max}
+AND s.class = 'GALAXY' AND s.snMedian > 5
+"""
+res = SDSS.query_sql(query)
+df = res.to_pandas()
+df['v_kms'] = df['z'] * c
 
-    # Calculate search center and width
-    ra_center = 2.5 # Midpoint of 350 to 15
-    dec_center = (config['dec_range'][0] + config['dec_range'][1]) / 2
-    
-    # Query the database
-    # width=25deg, height=20deg to capture the barrier filaments
-    try:
-        results = v.query_region(
-            SkyCoord(ra=ra_center, dec=dec_center, unit=(u.deg, u.deg)),
-            width=25*u.deg, height=20*u.deg, 
-            catalog="VII/249/6dfgs"
-        )
-        df = results[0].to_pandas()
-        
-        # Forensic Filter: Keep only high-confidence galaxies for the baseline
-        # 6dFGS quality 3 or 4 are reliable spectroscopic redshifts
-        df = df[df['quality'] >= 3]
-        
-        print(f"Total Sculptor Population Retrieved: {len(df)}")
-        df.to_csv(f"{config['name']}_forensic_audit.csv", index=False)
-        return df
-    except Exception as e:
-        print(f"Retrieval Failed: {e}")
-        return None
+# 3. Calculate Metric Jitter (0.5 degree bins)
+df['ra_bin'] = (df['ra'] // 0.5) * 0.5
+df['dec_bin'] = (df['dec'] // 0.5) * 0.5
+jitter_map = df.groupby(['ra_bin', 'dec_bin'])['v_kms'].agg(['std', 'count']).reset_index()
+jitter_map.columns = ['ra', 'dec', 'jitter_kms', 'count']
+jitter_map = jitter_map[jitter_map['count'] >= 2] # Require at least 2 galaxies for dispersion
 
-# Execute Retrieval
-sculptor_data = retrieve_void_population(void_config)
+# 4. Isolate Bright Nulls (The "Metric Snap" candidates)
+bright_nulls = df[(df['r'] < 18) & ((df['z'] < 0.001) | (df['zwarning'] != 0))].copy()
 
-# Exporting the raw line-of-sight population for the Forensic Audit
-df.to_csv('bootes_void_audit_raw.csv', index=False)
-print("Success: 'bootes_void_audit_raw.csv' created and ready for download.")
+# 5. The Thermodynamic Bridge: Jitter-to-keV Conversion
+peak_jitter = jitter_map['jitter_kms'].max()
+# Ek = 0.5 * m_p * (v/c)^2
+# Result converted to keV (divide by 1000)
+ek_kev = (0.5 * m_p * (peak_jitter / c)**2) / 1000
+
+# 6. Save all data to CSV
+df.to_csv(f'{void_name}_raw_population.csv', index=False)
+jitter_map.to_csv(f'{void_name}_jitter_analysis.csv', index=False)
+bright_nulls.to_csv(f'{void_name}_bright_nulls.csv', index=False)
+
+# 7. Forensic Summary
+print("\n" + "="*30)
+print(f"AUDIT SUMMARY: {void_name}")
+print(f"Total Population: {len(df)}")
+print(f"Bright Nulls Found: {len(bright_nulls)}")
+print(f"Peak Metric Jitter: {peak_jitter:.2f} km/s")
+print(f"Calculated Energy (Ek): {ek_kev:.2f} keV")
+print("="*30)
+print("Files generated: Raw Population, Jitter Analysis, Bright Nulls (CSV)")
