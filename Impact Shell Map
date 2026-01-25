@@ -1,53 +1,99 @@
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
-# 1. Load the processed forensic files
-# Make sure these files are in your current directory
-jitter_df = pd.read_csv('Bootes_Void_jitter_analysis.csv')
-bright_nulls_df = pd.read_csv('Bootes_Void_bright_nulls.csv')
+# 1. Load the Forensic CSV Files
+# These must be in your current directory or Colab environment
+df = pd.read_csv('Bootes_Void_raw_population.csv')
+nulls_df = pd.read_csv('Bootes_Void_bright_nulls.csv')
 
-# 2. Identify Nozzle location (Peak Jitter Coordinate)
-nozzle_row = jitter_df.loc[jitter_df['jitter_kms'].idxmax()]
-peak_jitter = nozzle_row['jitter_kms']
-nozzle_ra = nozzle_row['ra']
-nozzle_dec = nozzle_row['dec']
+# Speed of light in km/s
+c = 299792.458
 
-# 3. Generate the Impact Shell Map
-plt.figure(figsize=(12, 9))
+# 2. Define Coordinate Conversion Function
+# Spherical (RA, Dec, Radial Distance) -> Cartesian (X, Y, Z)
+def to_cartesian(ra, dec, r):
+    ra_rad = np.radians(ra)
+    dec_rad = np.radians(dec)
+    x = r * np.cos(dec_rad) * np.cos(ra_rad)
+    y = r * np.cos(dec_rad) * np.sin(ra_rad)
+    z = r * np.sin(dec_rad)
+    return x, y, z
 
-# Plot Metric Jitter as a grid of "Shells"
-# marker='s' (square) creates the blocky grid appearance used in forensic audits
-sc = plt.scatter(jitter_df['ra'], jitter_df['dec'], 
-                c=jitter_df['jitter_kms'], cmap='hot', 
-                marker='s', s=350, edgecolors='white', linewidths=0.3)
+# Convert the line-of-sight population
+df['x'], df['y'], df['z_coord'] = to_cartesian(df['ra'], df['dec'], df['v_kms'])
 
-# Overlay Bright Nulls (Failure Cells) 
-# These represent the 'Metric Snaps' identified in the audit
-plt.scatter(bright_nulls_df['ra'], bright_nulls_df['dec'], 
-            color='cyan', marker='x', s=120, 
-            label=f'{len(bright_nulls_df)} Bright Nulls (Failure Cells)', alpha=0.9)
+# Convert the Metric Snaps (Bright Nulls)
+nulls_df['x'], nulls_df['y'], nulls_df['z_coord'] = to_cartesian(nulls_df['ra'], nulls_df['dec'], nulls_df['v_kms'])
 
-# Highlight the Nozzle Point (The Siphonic Breach)
-plt.scatter([nozzle_ra], [nozzle_dec], 
-            facecolors='none', edgecolors='lime', 
-            s=700, label=f'Nozzle Breach (Peak: {peak_jitter:.0f} km/s)', 
-            linewidths=2.5)
+# 3. Define Mechanical Reference Points (Core and Nozzle)
+# Centered at the void's median depth of approx 15,000 km/s
+core_depth = 15000
+nozzle_depth = 15000
+cx, cy, cz = to_cartesian(222.5, 46.0, core_depth)
+nx, ny, nz = to_cartesian(223.0, 41.5, nozzle_depth)
 
-# Add visual identifiers and labels
-plt.colorbar(sc, label='Metric Jitter (km/s)')
-plt.xlabel('Right Ascension (RA)')
-plt.ylabel('Declination (Dec)')
-plt.title(f'Boötes Void: Impact Shell Map\nPeak Jitter: {peak_jitter:,.2f} km/s at ({nozzle_ra}, {nozzle_dec})')
-plt.legend(loc='upper right', frameon=True, facecolor='white', framealpha=0.9)
-plt.grid(True, linestyle='--', alpha=0.4)
+# ==========================================
+# MAP 1: BLOWN-UP 3D CARTESIAN PROJECTION
+# ==========================================
+fig = plt.figure(figsize=(18, 15))
+ax = fig.add_subplot(111, projection='3d')
 
-# Set window limits to focus on the void core and its barriers
-plt.xlim(jitter_df['ra'].min() - 0.5, jitter_df['ra'].max() + 0.5)
-plt.ylim(jitter_df['dec'].min() - 0.5, jitter_df['dec'].max() + 0.5)
+# Background Noise (Foreground/Background Galaxies)
+ax.scatter(df['x'], df['y'], df['z_coord'], c=df['v_kms'], cmap='viridis', s=3, alpha=0.1, label='Ambient Metric Noise')
+
+# THE VOID BOUNDARIES: Focus on the 10k - 20k km/s range
+void_mask = (df['v_kms'] >= 10000) & (df['v_kms'] <= 20000)
+ax.scatter(df.loc[void_mask, 'x'], df.loc[void_mask, 'y'], df.loc[void_mask, 'z_coord'], 
+           c=df.loc[void_mask, 'v_kms'], cmap='plasma', s=10, alpha=0.4, label='Siphonic Barrier Population')
+
+# METRIC SNAPS: Highlight high-visibility Failure Cells (Bright Nulls)
+ax.scatter(nulls_df['x'], nulls_df['y'], nulls_df['z_coord'], 
+           color='cyan', marker='x', s=250, label='Metric Snaps (Fracture Points)', depthshade=False, linewidths=3)
+
+# MECHANICAL ANCHORS: Nozzle and Core
+ax.scatter([nx], [ny], [nz], color='lime', marker='o', s=800, edgecolors='black', linewidths=3, label='Siphonic Nozzle (The Drain)')
+ax.scatter([cx], [cy], [cz], color='magenta', marker='*', s=800, edgecolors='white', linewidths=2, label='Void Core (The Reservoir)')
+
+# Resolution Adjustment (Blowing up the view)
+ax.set_xlim(df.loc[void_mask, 'x'].min(), df.loc[void_mask, 'x'].max())
+ax.set_ylim(df.loc[void_mask, 'y'].min(), df.loc[void_mask, 'y'].max())
+ax.set_zlim(df.loc[void_mask, 'z_coord'].min(), df.loc[void_mask, 'z_coord'].max())
+
+ax.set_title('Boötes Void: Blown-Up 3D Siphonic Audit Map', fontsize=24)
+ax.set_xlabel('X (km/s)', fontsize=15)
+ax.set_ylabel('Y (km/s)', fontsize=15)
+ax.set_zlabel('Z (km/s)', fontsize=15)
+ax.legend(fontsize=14)
+ax.view_init(elev=25, azim=235) # Optimal angle to see the "tunnel"
 
 plt.tight_layout()
-plt.savefig('bootes_impact_shell_map.png')
+plt.savefig('bootes_3d_blown_up.png', dpi=150)
 plt.show()
 
-print(f"Forensic Audit Visualized: Peak Jitter of {peak_jitter:,.2f} km/s found at RA {nozzle_ra}, Dec {nozzle_dec}.")
+# ==========================================
+# MAP 2: DEPTH SLICE (RA VS. VELOCITY)
+# ==========================================
+plt.figure(figsize=(15, 8))
+
+# Plot the depth profile
+plt.scatter(df['ra'], df['v_kms'], c=df['v_kms'], cmap='viridis', s=5, alpha=0.2, label='Galactic Population')
+
+# Mark the Metric Snaps
+plt.scatter(nulls_df['ra'], nulls_df['v_kms'], color='cyan', marker='x', s=100, label='Metric Snaps')
+
+# Mark Core and Nozzle RA
+plt.axvline(222.5, color='magenta', linestyle='--', alpha=0.5, label='Core RA')
+plt.axvline(223.0, color='lime', linestyle='-', alpha=0.5, label='Nozzle RA')
+
+plt.title('Boötes Void Depth Slice: RA vs. Radial Velocity', fontsize=20)
+plt.xlabel('Right Ascension (RA)', fontsize=15)
+plt.ylabel('Depth (Velocity in km/s)', fontsize=15)
+plt.ylim(0, 30000) # Focusing on the void depth
+plt.colorbar(label='Recession Velocity (km/s)')
+plt.legend()
+plt.grid(True, alpha=0.3)
+
+plt.savefig('bootes_depth_slice.png')
+plt.show()
