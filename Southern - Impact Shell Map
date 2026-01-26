@@ -1,0 +1,97 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+# 1. Load the Forensic CSV Files
+# Ensure these files are in your current working directory
+df = pd.read_csv('Eridanus_Supervoid_population.csv')
+nulls_df = pd.read_csv('Eridanus_Supervoid_nulls.csv')
+
+# Speed of light in km/s (for reference)
+c = 299792.458
+
+# 2. Define Coordinate Conversion Function
+# Spherical (RA, Dec, Radial Velocity/Distance) -> Cartesian (X, Y, Z in km/s)
+def to_cartesian(ra, dec, r):
+    ra_rad = np.radians(ra)
+    dec_rad = np.radians(dec)
+    x = r * np.cos(dec_rad) * np.cos(ra_rad)
+    y = r * np.cos(dec_rad) * np.sin(ra_rad)
+    z = r * np.sin(dec_rad)
+    return x, y, z
+
+# Convert the line-of-sight population
+df['x'], df['y'], df['z_coord'] = to_cartesian(df['ra'], df['dec'], df['v'])
+
+# Convert the Metric Snaps (Bright Nulls) at v=0
+nulls_df['x'], nulls_df['y'], nulls_df['z_coord'] = to_cartesian(nulls_df['ra'], nulls_df['dec'], nulls_df['v'])
+
+# 3. Define Mechanical Reference Points (Core and Nozzle)
+# Anchored at the median depth of the Eridanus reservoir
+res_depth = df['v'].median() 
+cx, cy, cz = to_cartesian(47.5, -15.0, res_depth) # Core (Cold Spot)
+nx, ny, nz = to_cartesian(54.6, -35.5, res_depth) # Nozzle (Fornax Cluster)
+
+# ==========================================
+# MAP 1: BLOWN-UP 3D CARTESIAN PROJECTION
+# ==========================================
+fig = plt.figure(figsize=(18, 15))
+ax = fig.add_subplot(111, projection='3d')
+
+# Background: Ambient Metric Noise (Entire survey volume)
+ax.scatter(df['x'], df['y'], df['z_coord'], c=df['v'], cmap='viridis', s=3, alpha=0.1, label='Ambient Metric Noise')
+
+# THE IMPACT SHELL: Focus on the reservoir boundaries (Median +/- 5000 km/s)
+shell_mask = (df['v'] >= (res_depth - 5000)) & (df['v'] <= (res_depth + 5000))
+ax.scatter(df.loc[shell_mask, 'x'], df.loc[shell_mask, 'y'], df.loc[shell_mask, 'z_coord'], 
+           c=df.loc[shell_mask, 'v'], cmap='plasma', s=10, alpha=0.4, label='Siphonic Impact Shell')
+
+# METRIC SNAPS: Highlight high-visibility Failure Cells (Bright Nulls)
+ax.scatter(nulls_df['x'], nulls_df['y'], nulls_df['z_coord'], 
+           color='cyan', marker='x', s=250, label='Metric Snaps (Fracture Points)', depthshade=False, linewidths=3)
+
+# MECHANICAL ANCHORS: Nozzle and Core
+ax.scatter([nx], [ny], [nz], color='lime', marker='o', s=800, edgecolors='black', linewidths=3, label='Siphonic Nozzle (Fornax Breach)')
+ax.scatter([cx], [cy], [cz], color='magenta', marker='*', s=800, edgecolors='white', linewidths=2, label='Void Core (Eridanus Reservoir)')
+
+# Resolution Adjustment (Blowing up the view around the shell)
+ax.set_xlim(df.loc[shell_mask, 'x'].min(), df.loc[shell_mask, 'x'].max())
+ax.set_ylim(df.loc[shell_mask, 'y'].min(), df.loc[shell_mask, 'y'].max())
+ax.set_zlim(df.loc[shell_mask, 'z_coord'].min(), df.loc[shell_mask, 'z_coord'].max())
+
+ax.set_title('Eridanus Supervoid: Blown-Up 3D Siphonic Audit Map', fontsize=24)
+ax.set_xlabel('X (km/s)', fontsize=15)
+ax.set_ylabel('Y (km/s)', fontsize=15)
+ax.set_zlabel('Z (km/s)', fontsize=15)
+ax.legend(fontsize=14)
+ax.view_init(elev=25, azim=235) 
+
+plt.tight_layout()
+plt.savefig('eridanus_3d_blown_up.png', dpi=150)
+
+# ==========================================
+# MAP 2: DEPTH SLICE (RA VS. VELOCITY)
+# ==========================================
+plt.figure(figsize=(15, 8))
+
+# Plot the depth profile
+plt.scatter(df['ra'], df['v'], c=df['v'], cmap='viridis', s=5, alpha=0.2, label='Galactic Population')
+
+# Mark the Metric Snaps
+plt.scatter(nulls_df['ra'], nulls_df['v'], color='cyan', marker='x', s=100, label='Metric Snaps')
+
+# Mark Core and Nozzle RA
+plt.axvline(47.5, color='magenta', linestyle='--', alpha=0.5, label='Core RA (Cold Spot Center)')
+plt.axvline(54.6, color='lime', linestyle='-', alpha=0.5, label='Nozzle RA (Fornax Breach)')
+
+plt.title('Eridanus Supervoid Depth Slice: RA vs. Radial Velocity', fontsize=20)
+plt.xlabel('Right Ascension (RA)', fontsize=15)
+plt.ylabel('Depth (Velocity in km/s)', fontsize=15)
+plt.ylim(0, 40000) 
+plt.gca().invert_xaxis() # Sky convention
+plt.colorbar(label='Recession Velocity (km/s)')
+plt.legend()
+plt.grid(True, alpha=0.3)
+
+plt.savefig('eridanus_depth_slice.png')
