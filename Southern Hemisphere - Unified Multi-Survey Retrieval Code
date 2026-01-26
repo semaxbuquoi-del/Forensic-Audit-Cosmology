@@ -5,77 +5,66 @@ import numpy as np
 from astroquery.vizier import Vizier
 from astropy.coordinates import SkyCoord
 import astropy.units as u
-import time
 
 # --- CONFIGURATION ---
-void_name = "Eridanus_Supervoid"
-ra_range = [30.0, 65.0]     
-dec_range = [-40.0, -10.0]
-c = 299792.458              
-r_limit = 15.6              
+v_name = "Eridanus_Supervoid"
+r_lim = 15.6
 
-# 2. Chunked Retrieval Function
-def get_6dfgs_data(ra_min, ra_max, dec_min, dec_max):
-    v = Vizier(columns=['RAJ2000', 'DEJ2000', 'z', 'q_z', 'r_mag'], row_limit=-1)
-    # Using the 'master' table which is the most reliable for redshifts
-    catalog_id = "VII/249/master" 
+print("Initiating Dynamic Discovery of Southern Columns...")
+v = Vizier(columns=['*'], row_limit=-1)
+coords = SkyCoord(ra=47.5, dec=-25.0, unit=(u.deg, u.deg))
+res = v.query_region(coords, radius=15*u.deg, catalog="VII/249/master")
+
+if res:
+    table = res[0]
+    cols = table.colnames
+    print(f"Detected columns: {cols}")
+
+    # 2. DYNAMIC COLUMN FINDER
+    # We find which name the mirror is using for the key siphonic metrics
+    ra_col = next(c for c in cols if c.lower() in ['raj2000', 'ra'])
+    dec_col = next(c for c in cols if c.lower() in ['dej2000', 'dec'])
+    v_col = next(c for c in cols if c.lower() in ['cz', 'v_kms', 'vel'])
+    r_col = next(c for c in cols if 'rmag' in c.lower() or 'rfmag' in c.lower() or c.lower() == 'r_mag')
+
+    # 3. CONVERSION LOGIC
+    # Convert Sexagesimal strings to Decimal Degrees
+    ra_raw = [str(x) for x in table[ra_col]]
+    dec_raw = [str(x) for x in table[dec_col]]
+    c_list = SkyCoord(ra=ra_raw, dec=dec_raw, unit=(u.hourangle, u.deg))
     
-    full_df = []
-    # Break the 35x30 degree area into 5x5 chunks
-    ra_steps = np.arange(ra_min, ra_max, 5)
-    dec_steps = np.arange(dec_min, dec_max, 5)
+    # Extract numeric data, handling masked values/NaNs
+    v_list = [float(x) if np.ma.is_masked(x) == False and x is not None else 0.0 for x in table[v_col]]
+    r_list = [float(x) if np.ma.is_masked(x) == False and x is not None else 20.0 for x in table[r_col]]
     
-    print(f"Beginning Chunked Retrieval for {void_name}...")
+    # 4. CONSTRUCT DATAFRAME
+    df = pd.DataFrame({
+        'ra': c_list.ra.deg,
+        'dec': c_list.dec.deg,
+        'v': v_list,
+        'r': r_list
+    })
     
-    for r in ra_steps:
-        for d in dec_steps:
-            ra_c, dec_c = r + 2.5, d + 2.5
-            try:
-                res = v.query_region(
-                    SkyCoord(ra=ra_c, dec=dec_c, unit=(u.deg, u.deg)),
-                    width=5*u.deg, height=5*u.deg,
-                    catalog=catalog_id
-                )
-                if res and len(res) > 0:
-                    full_df.append(res[0].to_pandas())
-                    print(f" Captured chunk at RA {ra_c}, Dec {dec_c}")
-                time.sleep(0.5) # Prevent server lockout
-            except Exception as e:
-                print(f" Skipped chunk {ra_c}, {dec_c} due to timeout.")
-                
-    if full_df:
-        return pd.concat(full_df).drop_duplicates()
-    return None
-
-# 3. Execute and Process
-raw_data = get_6dfgs_data(ra_range[0], ra_range[1], dec_range[0], dec_range[1])
-
-if raw_data is not None:
-    df = raw_data.copy()
-    df.rename(columns={'RAJ2000': 'ra', 'DEJ2000': 'dec', 'r_mag': 'r', 'q_z': 'quality'}, inplace=True)
-    df['v_kms'] = df['z'] * c
-
-    # 4. Forensic Population (Q >= 3)
-    pop = df[df['quality'] >= 3].copy()
+    # 5. DEDUPLICATE & ANALYZE
+    df = df.drop_duplicates(subset=['ra', 'dec']).reset_index(drop=True)
+    pop = df[df['v'] > 0].copy()
+    nulls = df[(df['r'] < r_lim) & (df['v'] <= 0)].copy()
     
-    # 5. Bright Nulls (r < 15.6, Q < 3)
-    bright_nulls = df[(df['r'] < r_limit) & (df['quality'] < 3)].copy()
+    # Jitter Calculation (Dispersion per 0.5 deg bin)
+    pop['ra_b'] = (pop['ra'] // 0.5) * 0.5
+    pop['dec_b'] = (pop['dec'] // 0.5) * 0.5
+    j_map = pop.groupby(['ra_b', 'dec_b'])['v'].agg(['std', 'count']).reset_index()
 
-    # 6. Jitter Math
-    pop['ra_bin'] = (pop['ra'] // 0.5) * 0.5
-    pop['dec_bin'] = (pop['dec'] // 0.5) * 0.5
-    jitter_map = pop.groupby(['ra_bin', 'dec_bin'])['v_kms'].agg(['std', 'count']).reset_index()
-    jitter_map.columns = ['ra', 'dec', 'jitter_kms', 'count']
-    jitter_map = jitter_map[jitter_map['count'] >= 2]
-
-    # Save
-    pop.to_csv(void_name + '_raw_population.csv', index=False)
-    bright_nulls.to_csv(void_name + '_bright_nulls.csv', index=False)
-
-    print("\n" + "="*40)
-    print(f"SUCCESS: {len(pop)} Galaxies Retrieved.")
-    print(f"Found {len(bright_nulls)} Bright Nulls.")
-    print(f"Peak Jitter: {jitter_map['jitter_kms'].max():.2f} km/s")
-    print("="*40)
+    # 6. EXPORT
+    pop.to_csv(v_name + '_population.csv', index=False)
+    nulls.to_csv(v_name + '_nulls.csv', index=False)
+    
+    print("\n" + "="*35)
+    print("SUCCESS: SOUTHERN DATA SECURED")
+    print(f"Unique Galaxies: {len(pop)}")
+    print(f"Metric Snaps (Nulls): {len(nulls)}")
+    if not j_map.empty:
+        print(f"Max Jitter: {round(j_map['std'].max(), 2)} km/s")
+    print("="*35)
 else:
-    print("CRITICAL: Server returned no data. Try reducing the RA/Dec range.")
+    print("Query failed. Server might be timing out.")
