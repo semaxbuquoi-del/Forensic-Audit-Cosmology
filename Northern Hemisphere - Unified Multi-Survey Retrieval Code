@@ -1,0 +1,63 @@
+# 1. Setup Environment
+!pip install -q astroquery
+import pandas as pd
+import numpy as np
+from astroquery.sdss import SDSS
+
+# --- CONFIGURATION (SDSS - BOOTES) ---
+void_name = "Bootes_Void"
+ra_min, ra_max = 211.0, 226.0
+dec_min, dec_max = 38.0, 50.0
+c = 299792.458   # Speed of light in km/s
+m_p = 938.272e6  # Proton mass in eV/c^2
+
+# 2. Forensic SQL Query
+# We pull r-magnitude for luminosity and zwarning for signal failure mapping
+print(f"Retrieving SDSS DR18 data for {void_name} barriers...")
+query = f"""
+SELECT s.ra, s.dec, s.z, s.zwarning, s.plate, s.mjd, s.fiberid, p.r
+FROM PhotoObj AS p JOIN SpecObj AS s ON s.bestobjid = p.objid
+WHERE s.ra BETWEEN {ra_min} AND {ra_max} AND s.dec BETWEEN {dec_min} AND {dec_max}
+AND s.class = 'GALAXY' AND s.snMedian > 5
+"""
+res = SDSS.query_sql(query)
+
+if res is not None:
+    df = res.to_pandas()
+    df['v_kms'] = df['z'] * c
+
+    # 3. Jitter Analysis (0.5 degree bins)
+    df['ra_bin'] = (df['ra'] // 0.5) * 0.5
+    df['dec_bin'] = (df['dec'] // 0.5) * 0.5
+    
+    # Population: Filter for clean signals for the jitter baseline
+    pop = df[df['zwarning'] == 0].copy()
+    jitter_map = pop.groupby(['ra_bin', 'dec_bin'])['v_kms'].agg(['std', 'count']).reset_index()
+    jitter_map.columns = ['ra', 'dec', 'jitter_kms', 'count']
+    jitter_map = jitter_map[jitter_map['count'] >= 2]
+
+    # 4. Bright Nulls (The Metric Snap Witnesses)
+    # Bright objects (r < 18) where the expansion signal disconnected (zwarning != 0)
+    bright_nulls = df[(df['r'] < 18) & (df['zwarning'] != 0)].copy()
+
+    # 5. Thermodynamic Math
+    peak_jitter = jitter_map['jitter_kms'].max()
+    # Ek = 0.5 * m_p * (v/c)^2 / 1000 for keV
+    ek_kev = (0.5 * m_p * (peak_jitter / c)**2) / 1000
+
+    # 6. Export Siphonic Datasets to CSV
+    pop.to_csv(f'{void_name}_raw_population.csv', index=False)
+    jitter_map.to_csv(f'{void_name}_jitter_analysis.csv', index=False)
+    bright_nulls.to_csv(f'{void_name}_bright_nulls.csv', index=False)
+
+    # 7. Forensic Summary
+    print("\n" + "="*30)
+    print(f"SDSS AUDIT SUMMARY: {void_name}")
+    print(f"Total Population: {len(pop)}")
+    print(f"Bright Nulls (Snaps): {len(bright_nulls)}")
+    print(f"Peak Metric Jitter: {peak_jitter:.2f} km/s")
+    print(f"Thermodynamic Energy (Ek): {ek_kev:.2f} keV")
+    print("="*30)
+    print(f"Files Generated: {void_name}_raw_population.csv, etc.")
+else:
+    print("Error: No data returned from SDSS. Check coordinate bounds.")
