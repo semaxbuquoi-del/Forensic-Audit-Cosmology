@@ -1,55 +1,61 @@
-# 1. Setup Environment
+# Unified Multi-Survey Retrieval Code
+# Repository: Forensic-Audit-Cosmology
+# Purpose: Cross-reference DESI (North) and 6dFGS (South) for Siphonic Audits
+
 !pip install -q astroquery
 import pandas as pd
 import numpy as np
-from astroquery.sdss import SDSS
+from astroquery.vizier import Vizier
+from astropy.coordinates import SkyCoord
+import astropy.units as u
 
-# --- CONFIGURATION ---
-void_name = "Bootes_Void"
-ra_min, ra_max = 211.0, 226.0
-dec_min, dec_max = 38.0, 50.0
-c = 299792.458 # Speed of light in km/s
-m_p = 938.272e6 # Proton mass in eV/c^2 (for Ek calculation)
+def forensic_retrieval(void_name, ra_min, ra_max, dec_min, dec_max):
+    print(f"--- Initiating Forensic Audit: {void_name} ---")
+    c = 299792.458
+    ra_mid, dec_mid = (ra_min + ra_max) / 2, (dec_min + dec_max) / 2
+    width, height = (ra_max - ra_min), (dec_max - dec_min)
+    
+    # 1. NORTHERN AUDIT: DESI DR1 (VizieR V/161)
+    # Applied if Dec > -30 (DESI's coverage zone)
+    if dec_max > -30:
+        print(f"[{void_name}] Querying DESI DR1 Database...")
+        v = Vizier(columns=['RAICRS', 'DEICRS', 'z', 'ZWARN', 'Fr', 'OType'], row_limit=-1)
+        res = v.query_region(SkyCoord(ra=ra_mid, dec=dec_mid, unit=(u.deg, u.deg)),
+                             width=width*u.deg, height=height*u.deg, catalog="V/161/zcatalog")
+        df = res[0].to_pandas()
+        df.rename(columns={'RAICRS': 'ra', 'DEICRS': 'dec', 'Fr': 'flux_r', 'ZWARN': 'zwarning'}, inplace=True)
+        df['r'] = 22.5 - 2.5 * np.log10(df['flux_r'].clip(lower=1e-5)) # Nanomaggies to Mag
+        df['v_kms'] = df['z'] * c
+        df['survey'] = 'DESI'
 
-# 2. Forensic Retrieval Query
-print(f"Retrieving data for {void_name} barriers...")
-query = f"""
-SELECT s.ra, s.dec, s.z, s.zwarning, s.plate, s.mjd, s.fiberid, p.r
-FROM PhotoObj AS p JOIN SpecObj AS s ON s.bestobjid = p.objid
-WHERE s.ra BETWEEN {ra_min} AND {ra_max} AND s.dec BETWEEN {dec_min} AND {dec_max}
-AND s.class = 'GALAXY' AND s.snMedian > 5
-"""
-res = SDSS.query_sql(query)
-df = res.to_pandas()
-df['v_kms'] = df['z'] * c
+    # 2. SOUTHERN AUDIT: 6dFGS (VizieR VII/249)
+    # Applied if Dec < 0
+    elif dec_min < 0:
+        print(f"[{void_name}] Querying 6dFGS Southern Database...")
+        v = Vizier(columns=['RAJ2000', 'DEJ2000', 'z', 'q_z', 'r_mag'], row_limit=-1)
+        res = v.query_region(SkyCoord(ra=ra_mid, dec=dec_mid, unit=(u.deg, u.deg)),
+                             width=width*u.deg, height=height*u.deg, catalog="VII/249/6dfgs")
+        df = res[0].to_pandas()
+        df.rename(columns={'RAJ2000': 'ra', 'DEJ2000': 'dec', 'r_mag': 'r', 'q_z': 'zwarning'}, inplace=True)
+        df['v_kms'] = df['z'] * c
+        df['survey'] = '6dFGS'
 
-# 3. Calculate Metric Jitter (0.5 degree bins)
-df['ra_bin'] = (df['ra'] // 0.5) * 0.5
-df['dec_bin'] = (df['dec'] // 0.5) * 0.5
-jitter_map = df.groupby(['ra_bin', 'dec_bin'])['v_kms'].agg(['std', 'count']).reset_index()
-jitter_map.columns = ['ra', 'dec', 'jitter_kms', 'count']
-jitter_map = jitter_map[jitter_map['count'] >= 2] # Require at least 2 galaxies for dispersion
+    # 3. FORENSIC FILTERING (The Metric Logic)
+    # Population: Filter for high-quality GALAXY spectra
+    pop = df[((df['survey'] == 'DESI') & (df['OType'] == 'GALAXY') & (df['zwarning'] == 0)) |
+             ((df['survey'] == '6dFGS') & (df['zwarning'] >= 3))].copy()
+    
+    # Bright Nulls: r < 18 but metric failure flags (ZWARN != 0 or q_z < 3)
+    nulls = df[(df['r'] < 18) & (
+        ((df['survey'] == 'DESI') & (df['zwarning'] != 0)) |
+        ((df['survey'] == '6dFGS') & (df['zwarning'] < 3))
+    )].copy()
 
-# 4. Isolate Bright Nulls (The "Metric Snap" candidates)
-bright_nulls = df[(df['r'] < 18) & ((df['z'] < 0.001) | (df['zwarning'] != 0))].copy()
+    # 4. EXPORT
+    pop.to_csv(f'{void_name}_raw_population.csv', index=False)
+    nulls.to_csv(f'{void_name}_bright_nulls.csv', index=False)
+    print(f"Audit Complete. Saved: {len(pop)} targets and {len(nulls)} Nulls.")
+    return pop, nulls
 
-# 5. The Thermodynamic Bridge: Jitter-to-keV Conversion
-peak_jitter = jitter_map['jitter_kms'].max()
-# Ek = 0.5 * m_p * (v/c)^2
-# Result converted to keV (divide by 1000)
-ek_kev = (0.5 * m_p * (peak_jitter / c)**2) / 1000
-
-# 6. Save all data to CSV
-df.to_csv(f'{void_name}_raw_population.csv', index=False)
-jitter_map.to_csv(f'{void_name}_jitter_analysis.csv', index=False)
-bright_nulls.to_csv(f'{void_name}_bright_nulls.csv', index=False)
-
-# 7. Forensic Summary
-print("\n" + "="*30)
-print(f"AUDIT SUMMARY: {void_name}")
-print(f"Total Population: {len(df)}")
-print(f"Bright Nulls Found: {len(bright_nulls)}")
-print(f"Peak Metric Jitter: {peak_jitter:.2f} km/s")
-print(f"Calculated Energy (Ek): {ek_kev:.2f} keV")
-print("="*30)
-print("Files generated: Raw Population, Jitter Analysis, Bright Nulls (CSV)")
+# --- RUN BOOTES AUDIT (DESI) ---
+pop, nulls = forensic_retrieval("Bootes_Void", 211.0, 226.0, 38.0, 50.0)
