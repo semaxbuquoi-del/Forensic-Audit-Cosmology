@@ -1,0 +1,21 @@
+# Use this after running your Boötes_Wide or Ursa_Major search
+c = 299792.458
+
+# 1. Isolate the Clean Snaps specifically
+clean_snap_data = clean_snaps.copy()
+
+# 2. Calculate the 'Jitter Velocity' (Frequency Instability)
+# In your model, zErr represents the 'Metric Jitter' or tension before the snap
+clean_snap_data['instability_km_s'] = clean_snap_data['z_err'] * c
+
+# 3. Add a 'Siphonic Tension' column (Ratio of Jitter to Gravity)
+# Using your paper's baseline: Gravity is ~943 km/s
+clean_snap_data['tension_ratio'] = clean_snap_data['instability_km_s'] / 943
+
+# 4. Generate the Forensic CSV
+filename = f"{void_name}_Clean_Snap_Audit.csv"
+clean_snap_data[['ra', 'dec', 'objid', 'r_mag', 'snr', 'instability_km_s', 'tension_ratio']].to_csv(filename, index=False)
+
+print(f"--- Forensic Audit Exported: {filename} ---")
+print(f"Highest Peak Instability found in Clean Snaps: {clean_snap_data['instability_km_s'].max():.2f} km/s")
+print(f"Average Tension Ratio: {clean_snap_data['tension_ratio'].mean():.2f}x")
