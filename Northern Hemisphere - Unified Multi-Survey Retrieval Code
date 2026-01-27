@@ -1,66 +1,61 @@
-# 1. Setup Environment
-!pip install -q astroquery
 import pandas as pd
 import numpy as np
 from astroquery.sdss import SDSS
+import matplotlib.pyplot as plt
 
-# --- CONFIGURATION (SDSS - BOOTES) ---
-void_name = "Boötes_Void"
-ra_min, ra_max = 211.0, 226.0
-dec_min, dec_max = 38.0, 50.0
-c = 299792.458   # Speed of light in km/s
-m_p_ev = 938.272e6  # Proton mass in eV/c^2 (938.272 MeV)
+# 1. DEFINE WIDE-AREA BOOTES PARAMETERS (Control Group)
+void_name = "Boötes_Wide_Audit"
+# Expanding RA/Dec to match the Ursa Major "Much Larger Dataset" scale
+ra_min, ra_max = 200.0, 230.0  
+dec_min, dec_max = 35.0, 50.0   
 
-# 2. Forensic SQL Query
-# We pull r-magnitude for luminosity and zwarning for signal failure mapping
-print(f"Retrieving SDSS DR18 data for {void_name} barriers...")
+# 2. THE UNIFIED SQL QUERY (Identical to Ursa Major)
 query = f"""
-SELECT s.ra, s.dec, s.z, s.zwarning, s.plate, s.mjd, s.fiberid, p.r
-FROM PhotoObj AS p JOIN SpecObj AS s ON s.bestobjid = p.objid
-WHERE s.ra BETWEEN {ra_min} AND {ra_max} AND s.dec BETWEEN {dec_min} AND {dec_max}
-AND s.class = 'GALAXY' AND s.snMedian > 5
+SELECT
+    p.objid, s.specobjid, p.ra, p.dec, 
+    p.modelMag_r as r_mag, 
+    s.z as redshift, 
+    s.zErr as z_err,
+    s.zWarning as warning_flag,
+    s.snMedian as snr,
+    p.nChild as children
+FROM PhotoObj AS p
+JOIN SpecObj AS s ON s.bestobjid = p.objid
+WHERE
+    p.ra BETWEEN {ra_min} AND {ra_max}
+    AND p.dec BETWEEN {dec_min} AND {dec_max}
+    AND s.class = 'GALAXY'
 """
-res = SDSS.query_sql(query)
 
-if res is not None:
-    df = res.to_pandas()
-    # Define z as the Coordinate Deletion Rate (dz/dt)
-    df['dz_dt'] = df['z'] * c
+try:
+    results = SDSS.query_sql(query)
+    df = results.to_pandas()
+    print(f"--- {void_name} Raw Data ---")
+    print(f"Total Population: {len(df)}")
+except Exception as e:
+    print(f"Error: {e}")
 
-    # 3. Frequency Instability Analysis (0.5 degree bins)
-    df['ra_bin'] = (df['ra'] // 0.5) * 0.5
-    df['dec_bin'] = (df['dec'] // 0.5) * 0.5
-    
-    # Population: Filter for clean signals for the baseline stability
-    pop = df[df['zwarning'] == 0].copy()
-    instability_map = pop.groupby(['ra_bin', 'dec_bin'])['dz_dt'].agg(['std', 'count']).reset_index()
-    instability_map.columns = ['ra', 'dec', 'freq_instability_kms', 'count']
-    instability_map = instability_map[instability_map['count'] >= 2]
+# 3. IDENTIFYING CLEAN METRIC SNAPS (The Forensic Indicator)
+bright_nulls = df[(df['r_mag'] < 18) & (df['warning_flag'] > 0)].copy()
+# Criteria for 'Clean' Snaps: High SNR (Signal exists) and Isolated (No interference)
+impossible_failures = bright_nulls[bright_nulls['snr'] > 15]
+clean_snaps = impossible_failures[impossible_failures['children'] == 0]
 
-    # 4. Bright Nulls (The Metric Snap Witnesses)
-    # Bright objects (r < 18) where the spectroscopic signal disconnected (zwarning != 0)
-    bright_nulls = df[(df['r'] < 18) & (df['zwarning'] != 0)].copy()
+print(f"Found {len(bright_nulls)} total Bright Nulls.")
+print(f"Found {len(clean_snaps)} 'Clean' Metric Snaps.")
 
-    # 5. Thermodynamic Bridge (Relativistic Phase Transition Energy)
-    peak_instability = instability_map['freq_instability_kms'].max()
-    beta = peak_instability / c
-    # Using Relativistic Wd = (gamma - 1) * mc^2
-    gamma = 1 / np.sqrt(1 - min(beta, 0.999)**2) if beta < 1 else (beta + 1) # Handling dz/dt > c
-    wd_kev = ((gamma - 1) * m_p_ev) / 1000
+# 4. STANDARDIZED COORDINATE DEPTH MAP
+c = 299792.458
+df['velocity'] = df['redshift'] * c
 
-    # 6. Export Siphonic Datasets to CSV
-    pop.to_csv(f'{void_name}_raw_population.csv', index=False)
-    instability_map.to_csv(f'{void_name}_coordinate_deletion_analysis.csv', index=False)
-    bright_nulls.to_csv(f'{void_name}_bright_nulls.csv', index=False)
+plt.figure(figsize=(12, 7))
+plt.scatter(df['ra'], df['velocity'], c='blue', s=1, alpha=0.3, label='Laminar Population')
+plt.scatter(bright_nulls['ra'], [0]*len(bright_nulls), c='red', s=15, marker='x', label='Metric Snaps')
+plt.scatter(clean_snaps['ra'], [0]*len(clean_snaps), edgecolors='yellow', facecolors='none', s=50, label='Clean Snaps (Control)')
 
-    # 7. Forensic Summary
-    print("\n" + "="*35)
-    print(f"SDSS AUDIT SUMMARY: {void_name}")
-    print(f"Total Population: {len(pop)}")
-    print(f"Bright Nulls (Metric Snaps): {len(bright_nulls)}")
-    print(f"Peak Frequency Instability: {peak_instability:.2f} km/s")
-    print(f"Phase Transition Energy (Wd): {wd_kev:.2f} keV")
-    print("="*35)
-    print(f"Files Generated: {void_name}_raw_population.csv, etc.")
-else:
-    print("Error: No data returned from SDSS. Check coordinate bounds.")
+plt.title(f"Forensic Audit: {void_name} - Standardized Coordinate Depth", fontsize=14)
+plt.xlabel("Right Ascension (RA)")
+plt.ylabel("Velocity (km/s)")
+plt.ylim(-5000, 150000) # Standardized Y-axis for side-by-side comparison
+plt.legend()
+plt.show()
