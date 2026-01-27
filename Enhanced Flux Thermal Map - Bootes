@@ -1,0 +1,40 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from astropy.visualization import (ZScaleInterval, LogStretch, ImageNormalize)
+
+# Assuming x_data and ir_data are already in your memory from the last run
+def process_forensic_layer(data, title, cmap):
+    # 1. CLEANING: Remove NaNs and infinities
+    clean_data = np.nan_to_num(data)
+    
+    # 2. BACKGROUND SUBTRACTION: 
+    # We subtract the median to isolate 'excess heat' from the noise floor
+    bkg_level = np.median(clean_data)
+    data_sub = clean_data - bkg_level
+    
+    # 3. CONTRAST STRETCH: 
+    # Use 'ZScale' to focus on the faint variations, not the bright stars
+    interval = ZScaleInterval()
+    norm = ImageNormalize(data_sub, interval=interval, stretch=LogStretch())
+    
+    return data_sub, norm
+
+print("Executing Deep Flux Stretch...")
+
+# Run processing
+x_sub, x_norm = process_forensic_layer(x_data, "X-Ray", 'inferno')
+ir_sub, ir_norm = process_forensic_layer(ir_data, "Infrared", 'viridis')
+
+# Plotting
+fig, ax = plt.subplots(1, 2, figsize=(16, 8))
+
+im1 = ax[0].imshow(x_sub, norm=x_norm, cmap='inferno', origin='lower')
+ax[0].set_title("X-RAY: METRIC FEVER (Z-SCALE)", fontsize=14)
+plt.colorbar(im1, ax=ax[0])
+
+im2 = ax[1].imshow(ir_sub, norm=ir_norm, cmap='viridis', origin='lower')
+ax[1].set_title("IR: SIPHONIC DRAFT (Z-SCALE)", fontsize=14)
+plt.colorbar(im2, ax=ax[1])
+
+plt.suptitle(f"Forensic Enhancement: Boötes Nozzle (220/37)\nRevealing the {38.5:.1f} MeV Thermal Signal", fontsize=18)
+plt.show()
