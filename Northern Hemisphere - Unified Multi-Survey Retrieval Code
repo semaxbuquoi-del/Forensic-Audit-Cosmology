@@ -5,11 +5,11 @@ import numpy as np
 from astroquery.sdss import SDSS
 
 # --- CONFIGURATION (SDSS - BOOTES) ---
-void_name = "Bootes_Void"
+void_name = "Boötes_Void"
 ra_min, ra_max = 211.0, 226.0
 dec_min, dec_max = 38.0, 50.0
 c = 299792.458   # Speed of light in km/s
-m_p = 938.272e6  # Proton mass in eV/c^2
+m_p_ev = 938.272e6  # Proton mass in eV/c^2 (938.272 MeV)
 
 # 2. Forensic SQL Query
 # We pull r-magnitude for luminosity and zwarning for signal failure mapping
@@ -24,40 +24,43 @@ res = SDSS.query_sql(query)
 
 if res is not None:
     df = res.to_pandas()
-    df['v_kms'] = df['z'] * c
+    # Define z as the Coordinate Deletion Rate (dz/dt)
+    df['dz_dt'] = df['z'] * c
 
-    # 3. Jitter Analysis (0.5 degree bins)
+    # 3. Frequency Instability Analysis (0.5 degree bins)
     df['ra_bin'] = (df['ra'] // 0.5) * 0.5
     df['dec_bin'] = (df['dec'] // 0.5) * 0.5
     
-    # Population: Filter for clean signals for the jitter baseline
+    # Population: Filter for clean signals for the baseline stability
     pop = df[df['zwarning'] == 0].copy()
-    jitter_map = pop.groupby(['ra_bin', 'dec_bin'])['v_kms'].agg(['std', 'count']).reset_index()
-    jitter_map.columns = ['ra', 'dec', 'jitter_kms', 'count']
-    jitter_map = jitter_map[jitter_map['count'] >= 2]
+    instability_map = pop.groupby(['ra_bin', 'dec_bin'])['dz_dt'].agg(['std', 'count']).reset_index()
+    instability_map.columns = ['ra', 'dec', 'freq_instability_kms', 'count']
+    instability_map = instability_map[instability_map['count'] >= 2]
 
     # 4. Bright Nulls (The Metric Snap Witnesses)
-    # Bright objects (r < 18) where the expansion signal disconnected (zwarning != 0)
+    # Bright objects (r < 18) where the spectroscopic signal disconnected (zwarning != 0)
     bright_nulls = df[(df['r'] < 18) & (df['zwarning'] != 0)].copy()
 
-    # 5. Thermodynamic Math
-    peak_jitter = jitter_map['jitter_kms'].max()
-    # Ek = 0.5 * m_p * (v/c)^2 / 1000 for keV
-    ek_kev = (0.5 * m_p * (peak_jitter / c)**2) / 1000
+    # 5. Thermodynamic Bridge (Relativistic Phase Transition Energy)
+    peak_instability = instability_map['freq_instability_kms'].max()
+    beta = peak_instability / c
+    # Using Relativistic Wd = (gamma - 1) * mc^2
+    gamma = 1 / np.sqrt(1 - min(beta, 0.999)**2) if beta < 1 else (beta + 1) # Handling dz/dt > c
+    wd_kev = ((gamma - 1) * m_p_ev) / 1000
 
     # 6. Export Siphonic Datasets to CSV
     pop.to_csv(f'{void_name}_raw_population.csv', index=False)
-    jitter_map.to_csv(f'{void_name}_jitter_analysis.csv', index=False)
+    instability_map.to_csv(f'{void_name}_coordinate_deletion_analysis.csv', index=False)
     bright_nulls.to_csv(f'{void_name}_bright_nulls.csv', index=False)
 
     # 7. Forensic Summary
-    print("\n" + "="*30)
+    print("\n" + "="*35)
     print(f"SDSS AUDIT SUMMARY: {void_name}")
     print(f"Total Population: {len(pop)}")
-    print(f"Bright Nulls (Snaps): {len(bright_nulls)}")
-    print(f"Peak Metric Jitter: {peak_jitter:.2f} km/s")
-    print(f"Thermodynamic Energy (Ek): {ek_kev:.2f} keV")
-    print("="*30)
+    print(f"Bright Nulls (Metric Snaps): {len(bright_nulls)}")
+    print(f"Peak Frequency Instability: {peak_instability:.2f} km/s")
+    print(f"Phase Transition Energy (Wd): {wd_kev:.2f} keV")
+    print("="*35)
     print(f"Files Generated: {void_name}_raw_population.csv, etc.")
 else:
     print("Error: No data returned from SDSS. Check coordinate bounds.")
