@@ -3,13 +3,13 @@ import numpy as np
 from astroquery.sdss import SDSS
 import matplotlib.pyplot as plt
 
-# 1. DEFINE WIDE-AREA BOOTES PARAMETERS (Control Group)
-void_name = "Boötes_Wide_Audit"
-# Expanding RA/Dec to match the Ursa Major "Much Larger Dataset" scale
-ra_min, ra_max = 200.0, 230.0  
-dec_min, dec_max = 35.0, 50.0   
+# 1. DEFINE CONTROL PARAMETERS (The "Dead Zone" Serpens Audit)
+void_name = "Blind_Control_Serpens"
+# Using the coordinates we discussed for the Null Hypothesis
+ra_min, ra_max = 240.0, 270.0  
+dec_min, dec_max = 0.0, 10.0   
 
-# 2. THE UNIFIED SQL QUERY (Identical to Ursa Major)
+# 2. THE UNIFIED SQL QUERY (Identical to Ursa Major/Boötes for Consistency)
 query = f"""
 SELECT
     p.objid, s.specobjid, p.ra, p.dec, 
@@ -28,34 +28,51 @@ WHERE
 """
 
 try:
+    print(f"Initiating Blind Audit for {void_name}...")
     results = SDSS.query_sql(query)
-    df = results.to_pandas()
-    print(f"--- {void_name} Raw Data ---")
-    print(f"Total Population: {len(df)}")
+    
+    if results is None:
+        print("Error: No data returned from SDSS. Check your connection or coordinates.")
+        df = pd.DataFrame()
+    else:
+        df = results.to_pandas()
+        print(f"--- {void_name} Raw Data ---")
+        print(f"Total Population: {len(df)}")
+        
+        # 3. IDENTIFYING CLEAN METRIC SNAPS (The Forensic Indicator)
+        # These are the 'cracks' in the metric. In a control zone, these should be near zero.
+        bright_nulls = df[(df['r_mag'] < 18) & (df['warning_flag'] > 0)].copy()
+        
+        # Criteria for 'Clean' Snaps: High SNR (Signal exists) and Isolated (No interference)
+        impossible_failures = bright_nulls[bright_nulls['snr'] > 15]
+        clean_snaps = impossible_failures[impossible_failures['children'] == 0]
+
+        print(f"Found {len(bright_nulls)} total Bright Nulls.")
+        print(f"Found {len(clean_snaps)} 'Clean' Metric Snaps.")
+
+        # 4. STANDARDIZED COORDINATE DEPTH MAP
+        c = 299792.458
+        df['velocity'] = df['redshift'] * c
+
+        plt.figure(figsize=(12, 7))
+        
+        # Plotting the background population (The 'Laminar' flow)
+        plt.scatter(df['ra'], df['velocity'], c='blue', s=1, alpha=0.3, label='Laminar Population')
+        
+        # Plotting the Snaps (We hope these are sparse/random in the control zone)
+        if not bright_nulls.empty:
+            plt.scatter(bright_nulls['ra'], [0]*len(bright_nulls), c='red', s=15, marker='x', label='Metric Snaps')
+        
+        if not clean_snaps.empty:
+            plt.scatter(clean_snaps['ra'], [0]*len(clean_snaps), edgecolors='yellow', facecolors='none', s=100, label='Clean Snaps (Anomalies)')
+
+        plt.title(f"Forensic Audit: {void_name} - Standardized Coordinate Depth", fontsize=14)
+        plt.xlabel("Right Ascension (RA)")
+        plt.ylabel("Velocity (km/s)")
+        plt.ylim(-5000, 150000) 
+        plt.grid(alpha=0.2)
+        plt.legend()
+        plt.show()
+
 except Exception as e:
-    print(f"Error: {e}")
-
-# 3. IDENTIFYING CLEAN METRIC SNAPS (The Forensic Indicator)
-bright_nulls = df[(df['r_mag'] < 18) & (df['warning_flag'] > 0)].copy()
-# Criteria for 'Clean' Snaps: High SNR (Signal exists) and Isolated (No interference)
-impossible_failures = bright_nulls[bright_nulls['snr'] > 15]
-clean_snaps = impossible_failures[impossible_failures['children'] == 0]
-
-print(f"Found {len(bright_nulls)} total Bright Nulls.")
-print(f"Found {len(clean_snaps)} 'Clean' Metric Snaps.")
-
-# 4. STANDARDIZED COORDINATE DEPTH MAP
-c = 299792.458
-df['velocity'] = df['redshift'] * c
-
-plt.figure(figsize=(12, 7))
-plt.scatter(df['ra'], df['velocity'], c='blue', s=1, alpha=0.3, label='Laminar Population')
-plt.scatter(bright_nulls['ra'], [0]*len(bright_nulls), c='red', s=15, marker='x', label='Metric Snaps')
-plt.scatter(clean_snaps['ra'], [0]*len(clean_snaps), edgecolors='yellow', facecolors='none', s=50, label='Clean Snaps (Control)')
-
-plt.title(f"Forensic Audit: {void_name} - Standardized Coordinate Depth", fontsize=14)
-plt.xlabel("Right Ascension (RA)")
-plt.ylabel("Velocity (km/s)")
-plt.ylim(-5000, 150000) # Standardized Y-axis for side-by-side comparison
-plt.legend()
-plt.show()
+    print(f"Forensic Failure: {e}")
