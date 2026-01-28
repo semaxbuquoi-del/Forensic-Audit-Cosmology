@@ -27,7 +27,7 @@ df['bin_center'] = df['axis_pos'].apply(lambda x: bins[np.digitize(x, bins)-1] i
 
 # 5. FLOW ANALYSIS (Density, Velocity, Jitter)
 flow_analysis = df.groupby('bin_center').agg({
-    'v': ['mean', 'std', 'count']
+    'velocity': ['mean', 'std', 'count']
 }).reset_index()
 
 flow_analysis.columns = ['pos', 'v_mean', 'jitter', 'density']
