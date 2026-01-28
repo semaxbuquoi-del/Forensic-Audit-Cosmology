@@ -1,0 +1,22 @@
+# --- ADD THIS AFTER SOUTHERN HEMISPHERE - UNIFIED MULTI-SURVEY CODE ---
+
+# 5b. SOUTHERN CLEAN SNAP FILTER
+# In 6dFGS, we look for high quality flags (q >= 4) despite zero velocity
+q_col = find_col(['q', 'qual', 'quality'], cols)
+snr_col = find_col(['snr', 's/n', 'snmedian'], cols)
+
+if q_col and snr_col:
+    # Convert quality and SNR to numeric
+    df['q'] = pd.to_numeric(to_float_array(table[q_col]), errors='coerce')
+    df['snr'] = pd.to_numeric(to_float_array(table[snr_col]), errors='coerce')
+    
+    # Identify Clean Snaps: Bright, High Quality, but Zero Velocity
+    clean_snaps = df[(df['r'] < r_lim) & 
+                     (df['v'] <= 0) & 
+                     (df['q'] >= 4) & 
+                     (df['snr'] > 10)].copy()
+    
+    print(f"Verified 'Clean' Metric Snaps: {len(clean_snaps)}")
+    clean_snaps.to_csv(f"{v_name}_clean_snaps.csv", index=False)
+else:
+    print("Forensic columns (Q/SNR) missing. Using raw nulls as Snap proxies.")
