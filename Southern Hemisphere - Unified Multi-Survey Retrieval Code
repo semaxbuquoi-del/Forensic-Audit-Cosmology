@@ -8,36 +8,45 @@ import astropy.units as u
 
 # --- CONFIGURATION ---
 v_name = "Eridanus_Supervoid"
-r_lim = 15.6
+r_lim = 15.6  # 6dFGS is shallower than SDSS
+target_ra = 47.5
+target_dec = -25.0
 
-print("Initiating Dynamic Discovery of Southern Columns...")
+print(f"Initiating Southern Audit: {v_name}...")
+
+# 2. DYNAMIC DISCOVERY & DATA PULL
+# We use row_limit=-1 to ensure we get the full reservoir population
 v = Vizier(columns=['*'], row_limit=-1)
-coords = SkyCoord(ra=47.5, dec=-25.0, unit=(u.deg, u.deg))
+coords = SkyCoord(ra=target_ra, dec=target_dec, unit=(u.deg, u.deg))
 res = v.query_region(coords, radius=15*u.deg, catalog="VII/249/master")
 
 if res:
     table = res[0]
     cols = table.colnames
-    print(f"Detected columns: {cols}")
+    print(f"Detected 6dFGS Columns: {cols}")
 
-    # 2. DYNAMIC COLUMN FINDER
-    # We find which name the mirror is using for the key siphonic metrics
-    ra_col = next(c for c in cols if c.lower() in ['raj2000', 'ra'])
-    dec_col = next(c for c in cols if c.lower() in ['dej2000', 'dec'])
-    v_col = next(c for c in cols if c.lower() in ['cz', 'v_kms', 'vel'])
-    r_col = next(c for c in cols if 'rmag' in c.lower() or 'rfmag' in c.lower() or c.lower() == 'r_mag')
+    # Map database names to our forensic variables
+    ra_col = next(c for c in cols if c.lower() in ['raj2000', 'ra', 'raj'])
+    dec_col = next(c for c in cols if c.lower() in ['dej2000', 'dec', 'dej'])
+    v_col = next(c for c in cols if c.lower() in ['cz', 'v_kms', 'vel', 'z'])
+    r_col = next(c for c in cols if 'rmag' in c.lower() or 'rfmag' in c.lower() or 'r_mag' in c.lower())
 
-    # 3. CONVERSION LOGIC
-    # Convert Sexagesimal strings to Decimal Degrees
-    ra_raw = [str(x) for x in table[ra_col]]
-    dec_raw = [str(x) for x in table[dec_col]]
-    c_list = SkyCoord(ra=ra_raw, dec=dec_raw, unit=(u.hourangle, u.deg))
+    # 3. COORDINATE NORMALIZATION (The RA Fix)
+    # Check if RA is in Decimal Degrees or Hour Angle
+    sample_ra = table[ra_col][0]
     
-    # Extract numeric data, handling masked values/NaNs
-    v_list = [float(x) if np.ma.is_masked(x) == False and x is not None else 0.0 for x in table[v_col]]
-    r_list = [float(x) if np.ma.is_masked(x) == False and x is not None else 20.0 for x in table[r_col]]
+    # If the database provides a string with ':' or is small (<24), we treat as Hour Angle
+    if isinstance(sample_ra, str) and ':' in sample_ra:
+        c_list = SkyCoord(ra=table[ra_col], dec=table[dec_col], unit=(u.hourangle, u.deg))
+    elif np.max(table[ra_col]) <= 24.1:
+        c_list = SkyCoord(ra=table[ra_col], dec=table[dec_col], unit=(u.hourangle, u.deg))
+    else:
+        c_list = SkyCoord(ra=table[ra_col], dec=table[dec_col], unit=(u.deg, u.deg))
     
-    # 4. CONSTRUCT DATAFRAME
+    # 4. DATA EXTRACTION & CLEANING
+    v_list = np.ma.filled(table[v_col], 0.0) # Fills masked values with 0 (The Snaps)
+    r_list = np.ma.filled(table[r_col], 20.0)
+
     df = pd.DataFrame({
         'ra': c_list.ra.deg,
         'dec': c_list.dec.deg,
@@ -45,26 +54,6 @@ if res:
         'r': r_list
     })
     
-    # 5. DEDUPLICATE & ANALYZE
-    df = df.drop_duplicates(subset=['ra', 'dec']).reset_index(drop=True)
-    pop = df[df['v'] > 0].copy()
-    nulls = df[(df['r'] < r_lim) & (df['v'] <= 0)].copy()
-    
-    # Jitter Calculation (Dispersion per 0.5 deg bin)
-    pop['ra_b'] = (pop['ra'] // 0.5) * 0.5
-    pop['dec_b'] = (pop['dec'] // 0.5) * 0.5
-    j_map = pop.groupby(['ra_b', 'dec_b'])['v'].agg(['std', 'count']).reset_index()
-
-    # 6. EXPORT
-    pop.to_csv(v_name + '_population.csv', index=False)
-    nulls.to_csv(v_name + '_nulls.csv', index=False)
-    
-    print("\n" + "="*35)
-    print("SUCCESS: SOUTHERN DATA SECURED")
-    print(f"Unique Galaxies: {len(pop)}")
-    print(f"Metric Snaps (Nulls): {len(nulls)}")
-    if not j_map.empty:
-        print(f"Max Jitter: {round(j_map['std'].max(), 2)} km/s")
-    print("="*35)
-else:
-    print("Query failed. Server might be timing out.")
+    # 5. FORENSIC SEPARATION
+    # pop = Galaxies with confirmed motion
+    # nulls = Bright galaxies where the metric 'snapped' (v=0)
