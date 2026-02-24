@@ -1,0 +1,45 @@
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+
+# Data from your successful audit
+data = {
+    "Name": ["Boötes North", "Boötes South", "Corona Bor V", "Leo Void", "Pegasus North V", 
+             "Ursa Major V", "Hercules V", "Lynx-Ursa Fil", "Virgo-Coma Bridge", 
+             "Leo Supercluster", "Corona Bor W", "Hercules Wall", "Coma Supercluster", 
+             "Sloan Great Wall", "Cancer Filament", "Ursa Major Fil"],
+    "Shear_Stress": [16069, 13497, 15010, 15110, 1178, 12114, 7105, 31781, 23574, 
+                     28802, 6606, 12555, 54523, 7349, 6561, 8472],
+    "Kurtosis": [-1.68, -0.95, -0.53, -0.22, 1.98, -0.52, 1.09, -1.19, -0.17, 
+                 -1.29, 0.12, -0.28, -0.99, -0.63, -0.49, 0.10]
+}
+
+df = pd.DataFrame(data)
+
+# Set the style
+plt.figure(figsize=(10, 6))
+sns.set_style("whitegrid")
+
+# Create the scatter plot with a linear regression line to show the -0.55 trend
+sns.regplot(x="Shear_Stress", y="Kurtosis", data=df, 
+            scatter_kws={"s": 100, "alpha": 0.7, "color": "teal"},
+            line_kws={"color": "red", "lw": 2})
+
+# Label the most critical "Phase Transition" points
+critical_points = ["Boötes North", "Pegasus North V", "Coma Supercluster", "Leo Supercluster"]
+for i, txt in enumerate(df.Name):
+    if txt in critical_points:
+        plt.annotate(txt, (df.Shear_Stress[i], df.Kurtosis[i]), 
+                     xytext=(5,5), textcoords='offset points', fontsize=9, fontweight='bold')
+
+# Add the "Yield Threshold" shaded region
+plt.axvspan(20000, 55000, alpha=0.1, color='orange', label='Metric Plasticity Zone')
+
+plt.title("Manifold Yield Chart: Stress-Induced Metric Softening", fontsize=14)
+plt.xlabel("Metric Shear Stress (0.5 * ρ * v²)", fontsize=12)
+plt.ylabel("Metric Stiffness (Kurtosis)", fontsize=12)
+plt.axhline(0, color='black', linestyle='--', alpha=0.5) # The "Perfect Vacuum" line
+plt.legend()
+
+plt.tight_layout()
+plt.show()
