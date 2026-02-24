@@ -1,0 +1,43 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+def simulate_gravity_wells():
+    # Grid Setup
+    x = np.linspace(-5, 5, 100)
+    y = np.linspace(-5, 5, 100)
+    X, Y = np.meshgrid(x, y)
+    r = np.sqrt(X**2 + Y**2)
+    r[r < 0.5] = 0.5  # Prevent singularity at center
+
+    # 1. Newtonian Potential (Standard Gravity)
+    # Phi = -GM/r
+    M_baryon = 1.0
+    phi_newton = -(M_baryon / r)
+
+    # 2. Metric Siphon Potential (Einstein-Restored)
+    # Phi = -(GM/r) * (1 + Q*r/c^3)
+    # Where Q is the Siphon Flux from the ER Bridge
+    Q_flux = 0.8 
+    phi_siphon = -(M_baryon / r) * (1 + Q_flux * r)
+
+    # Plotting
+    fig = plt.figure(figsize=(14, 7))
+
+    # Subplot 1: Newtonian (The "Missing Mass" Problem)
+    ax1 = fig.add_subplot(121, projection='3d')
+    ax1.plot_surface(X, Y, phi_newton, cmap='viridis', alpha=0.8)
+    ax1.set_title("Newtonian Potential Well\n(Requires 5x Dark Matter)")
+    ax1.set_zlim(-3, 0)
+
+    # Subplot 2: Metric Siphon (The Solution)
+    ax2 = fig.add_subplot(122, projection='3d')
+    ax2.plot_surface(X, Y, phi_siphon, cmap='magma', alpha=0.8)
+    ax2.set_title("Metric Siphon Well\n(Geometry Stretched by Flux Q)")
+    ax2.set_zlim(-3, 0)
+
+    plt.suptitle("Gravitational Potential Comparison: Mass vs. Manifold Tension", fontsize=16)
+    plt.show()
+
+if __name__ == "__main__":
+    simulate_gravity_wells()
