@@ -1,0 +1,55 @@
+import pandas as pd
+import numpy as np
+
+def calculate_metric_mass():
+    # Audit Data: [Name, Density (gal/Mpc3), Jitter (km/s), Hull_Vol (Mpc3)]
+    # Note: We use an average galaxy mass of 10^11 Solar Masses as the 'Baryonic Unit'
+    structures = [
+        ["Boötes North", 0.00656, 2213.47, 4.5e6],
+        ["Leo Supercluster", 0.02227, 1608.14, 2.8e6],
+        ["Virgo-Coma Bridge", 0.01515, 1764.04, 1.9e6],
+        ["Coma Supercluster", 0.04855, 1498.69, 2.5e6],
+        ["Sloan Great Wall", 0.00707, 1441.57, 1.2e7]
+    ]
+    
+    G = 4.3009e-3  # Gravitational constant in pc⋅(km/s)2⋅Msun−1
+    M_gal = 1e11   # Average solar masses per galaxy
+    
+    results = []
+    
+    for name, dens, jitter, vol in structures:
+        # 1. Total Observed Baryonic Mass
+        n_galaxies = dens * vol
+        m_bary = n_galaxies * M_gal
+        
+        # 2. Dynamic Mass (The 'Dark Matter' Illusion)
+        # M = (R * v^2) / G. We estimate R from the cube root of Volume.
+        radius_mpc = (vol)**(1/3)
+        radius_pc = radius_mpc * 1e6
+        m_dynamic = (radius_pc * (jitter**2)) / G
+        
+        # 3. Metric-to-Baryonic Ratio
+        mb_ratio = m_dynamic / m_bary
+        
+        # 4. Siphon Flux Equivalent (Q_mass)
+        # The 'Mass' being added by the Kerr-Siphon flow
+        q_mass = m_dynamic - m_bary
+        
+        results.append({
+            "Structure": name,
+            "Baryonic_M (Msun)": f"{m_bary:.2e}",
+            "Dynamic_M (Msun)": f"{m_dynamic:.2e}",
+            "Metric_Ratio": round(mb_ratio, 2),
+            "Siphon_Load": f"{q_mass:.2e}"
+        })
+
+    df = pd.DataFrame(results)
+    print("\n--- METRIC INERTIA & SIPHON LOAD ANALYSIS ---")
+    print(df)
+    
+    # Logic for the Committee:
+    print("\n[CONCLUSION FOR GITHUB]")
+    print(f"Average Metric Ratio: {df['Metric_Ratio'].mean():.2f}x")
+    print("If Ratio > 1, the extra gravity is the kinetic torque of the Siphon.")
+    
+calculate_metric_mass()
