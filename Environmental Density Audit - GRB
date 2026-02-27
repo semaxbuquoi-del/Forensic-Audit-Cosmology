@@ -1,0 +1,47 @@
+import numpy as np
+from astropy.coordinates import SkyCoord
+from astropy import units as u
+from astroquery.heasarc import Heasarc
+from astroquery.vizier import Vizier
+
+ra_n, dec_n = 205.2561, 14.7
+coords = SkyCoord(ra=ra_n, dec=dec_n, unit=(u.deg, u.deg))
+
+def final_metric_audit():
+    heasarc = Heasarc()
+    print(f"--- Finalizing Audit: Metric Nozzle {ra_n} ---")
+    
+    try:
+        # Step 1: Query Fermi with the lowercase 'catalog' name
+        table = heasarc.query_region(coords, catalog='fermigbrst', radius='5 deg')
+        
+        print(f"Verified {len(table)} events. Checking for 'Orphan' status in DESI...")
+        
+        for row in table:
+            # Using the lowercase names we found in your error log
+            b_name = row['name']
+            b_ra, b_dec = row['ra'], row['dec']
+            b_epeak = row['flnc_band_epeak']
+            b_coords = SkyCoord(ra=b_ra, dec=b_dec, unit=(u.deg, u.deg))
+            
+            # Step 2: Query DESI Legacy Survey (VII/298) for host galaxies
+            # We look in a tiny 0.05 degree radius (very localized)
+            viz = Vizier(columns=['*'], catalog='VII/298')
+            res = viz.query_region(b_coords, radius=0.05*u.deg)
+            
+            galaxy_count = len(res[0]) if res else 0
+            
+            print(f"\nEVENT: {b_name}")
+            print(f"  > Peak Energy (E_peak): {b_epeak} keV")
+            print(f"  > Local Galaxy Count: {galaxy_count}")
+            
+            if galaxy_count == 0:
+                print(f"  [!] CONFIRMED ORPHAN: No host galaxy detected in DESI. Potential Metric Rupture.")
+            elif galaxy_count < 3:
+                print(f"  [?] LOW DENSITY: Burst in high-tension manifold region.")
+
+    except Exception as e:
+        print(f"Audit error: {e}")
+
+if __name__ == "__main__":
+    final_metric_audit()
