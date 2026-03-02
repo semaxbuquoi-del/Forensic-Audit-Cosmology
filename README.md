@@ -19,11 +19,6 @@ I conducted a "Manifold Audit", calculating the Baryonic Scaffolding Density and
 
 * /data: The "Blind Discovery" logs and the final Multi-Manifold Census.
 * /src: Python scripts using astroquery and scipy.spatial to calculate 3D volumes and Metric Momentum.
-* /theory: Derivations of the Metric Siphon Equation:
-
-  $$H^2 = \frac{8\pi G}{3}\rho - \frac{k}{a^2} + \frac{1}{3} \frac{Q}{\rho_m}$$
-
-(Where $Q$ represents the siphonic flux into the Einstein-Rosen Macro-Bridges.)
 
 🧪 Quick StartTo replicate the 20-structure audit and correlation:
 git clone https://github.com/yourusername/metric-siphon.git
