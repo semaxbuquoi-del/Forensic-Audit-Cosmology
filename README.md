@@ -30,6 +30,8 @@ python manifold_audit.py
 
 This work restores Einstein's 1917–1935 intuition by replacing the static "blunder" of $\Lambda$ with a dynamic Viscosity Tensor. It protects the First Law of Thermodynamics by showing that "Expansion" is a conversion of potential metric tension into kinetic jitter.
 
-How to CiteIf you use this data to solve your own cosmological headaches, please cite:
+How to Cite
 
-Restoring the Manifold: A Mechanical Solution to the Hubble Tension via Metric Viscosity (2026).
+If you use this data to solve your own cosmological headaches, please cite:
+
+Restoring the Manifold: Mechanical Resolution of the Hubble Tension (2026)
