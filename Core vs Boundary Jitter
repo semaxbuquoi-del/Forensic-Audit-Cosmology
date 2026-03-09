@@ -1,0 +1,14 @@
+import numpy as np
+
+# Calculate distance from the 'Nozzle' center (205.25, 30.00)
+df_bright['dist_from_center'] = np.sqrt((df_bright['ra'] - 205.25)**2 + (df_bright['dec'] - 30.00)**2)
+
+# Compare the jitter in the 'Core' vs the 'Periphery'
+core = df_bright[df_bright['dist_from_center'] < 0.3]
+periphery = df_bright[df_bright['dist_from_center'] >= 0.3]
+
+core_jitter = np.sqrt(core['pmra'].std()**2 + core['pmdec'].std()**2)
+per_jitter = np.sqrt(periphery['pmra'].std()**2 + periphery['pmdec'].std()**2)
+
+print(f"Core Jitter (n={len(core)}): {core_jitter:.4f} mas/yr")
+print(f"Periphery Jitter (n={len(periphery)}): {per_jitter:.4f} mas/yr")
