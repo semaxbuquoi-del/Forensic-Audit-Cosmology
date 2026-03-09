@@ -1,0 +1,29 @@
+!pip install -U astroquery
+
+from astroquery.gaia import Gaia
+import astropy.units as u
+
+# the nozzle coordinates
+ra, dec, radius = 205.2561, 30.00, 0.5
+
+# Simplified query to avoid the 500 error from Gaia. 'Astrometric_excess_noise' < 1.0 and parallax < 0.5 
+# to isolate distant galaxies without needing the AP table.
+query = f"""
+SELECT TOP 100
+    source_id, ra, dec, pmra, pmdec, parallax, 
+    phot_g_mean_mag, astrometric_excess_noise
+FROM gaiadr3.gaia_source
+WHERE 1=CONTAINS(
+    POINT('ICRS', ra, dec),
+    CIRCLE('ICRS', {ra}, {dec}, {radius})
+)
+AND parallax < 0.5
+AND phot_g_mean_mag > 15
+ORDER BY phot_g_mean_mag ASC
+"""
+
+print(f"Launching simplified audit for RA {ra}, Dec {dec}...")
+job = Gaia.launch_job_async(query)
+results = job.get_results()
+df = results.to_pandas()
+df.head(10)
