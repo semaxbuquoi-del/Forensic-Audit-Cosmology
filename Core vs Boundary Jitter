@@ -1,7 +1,9 @@
 import numpy as np
 
-# Calculate distance from the 'Nozzle' center (205.25, 30.00)
+# Calculate distance from the 'Nozzle' center (205.25, 30.0) 
+df_bright = df_wide[df_wide['phot_g_mean_mag'] < 19].copy()
 df_bright['dist_from_center'] = np.sqrt((df_bright['ra'] - 205.25)**2 + (df_bright['dec'] - 30.00)**2)
+
 
 # Compare the jitter in the 'Core' vs the 'Periphery'
 core = df_bright[df_bright['dist_from_center'] < 0.3]
