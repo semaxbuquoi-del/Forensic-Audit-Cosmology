@@ -25,3 +25,11 @@ job = Gaia.launch_job_async(query)
 results = job.get_results()
 df_wide = results.to_pandas()
 print(f"Success! Captured {len(df_wide)} potential metric markers.")
+
+
+# Run this to see if the 'River' is stronger for high-confidence (brighter) objects
+df_bright = df_wide[df_wide['phot_g_mean_mag'] < 19]
+
+mean_flow_b = np.sqrt(df_bright['pmra'].mean()**2 + df_bright['pmdec'].mean()**2)
+jitter_b = np.sqrt(df_bright['pmra'].std()**2 + df_bright['pmdec'].std()**2)
+print(f"Bright Sample (n={len(df_bright)}) Anisotropy: {mean_flow_b/jitter_b:.2f}")
