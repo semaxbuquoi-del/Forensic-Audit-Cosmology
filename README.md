@@ -1,6 +1,6 @@
-Metric Siphon: Mechanical Resolution to the Hubble Tension
+Mechanical Resolution of the Hubble Tension
 
-"The universe is not expanding; it is flowing."
+"The universe is not expanding. It is flowing."
 
 This repository contains the data, audit logs, and Python implementations for the Metric Siphon Model—a mechanical re-interpretation of General Relativity that resolves the 9% Hubble Tension without the need for the Cosmological Constant ($\Lambda$) or Dark Energy.
 
@@ -13,7 +13,8 @@ This correlation proves that the vacuum behaves as a Non-Newtonian Dilatant Flui
 * Local Scale ($H_0 \approx 73$): Space in its high-stress, siphoning regime (Metric Softening).
 
 📊 Empirical Findings: The 20-Structure Census
-I conducted a "Manifold Audit", calculating the Baryonic Scaffolding Density and Velocity Jitter for 20 structures.
+
+I conducted a Manifold Analysis, calculating the Baryonic Density and Velocity Jitter for 20 structures.
 
 🛠 Project Structure
 
@@ -21,6 +22,7 @@ I conducted a "Manifold Audit", calculating the Baryonic Scaffolding Density and
 * /src: Python scripts using astroquery and scipy.spatial to calculate 3D volumes and Metric Momentum.
 
 🧪 Quick StartTo replicate the 20-structure audit and correlation:
+
 git clone https://github.com/yourusername/metric-siphon.git
 cd metric-siphon
 pip install -r requirements.txt
@@ -34,4 +36,4 @@ How to Cite
 
 If you use this data to solve your own cosmological headaches, please cite:
 
-Restoring the Manifold: Mechanical Resolution of the Hubble Tension (2026)
+Mechanical Resolution of the Hubble Tension (2026)
